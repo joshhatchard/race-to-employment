@@ -20,7 +20,7 @@ A mobile-first, Google-authenticated job-search race for a group of friends. It 
    ```
    Restore launch time with:
    ```sql
-   update public.groups set start_at = '2026-10-23 13:00:00+00' where code = 'SUEDE26';
+   update public.groups set start_at = '2026-10-25 06:00:00+00' where code = 'SUEDE26';
    ```
 6. Troubleshooting:
    - `redirect_uri_mismatch`: copy the exact callback URI Supabase shows into Google Cloud.

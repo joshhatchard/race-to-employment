@@ -50,6 +50,8 @@ create unique index if not exists memberships_name_uq
   on public.memberships (group_id, lower(display_name));
 
 alter table public.memberships add column if not exists avatar text not null default 'cow';
+create unique index if not exists memberships_avatar_uq
+  on public.memberships (group_id, avatar);
 
 create table if not exists public.applications (
   id           uuid primary key default gen_random_uuid(),
@@ -201,6 +203,7 @@ declare
   g public.groups;
   v_name text := public._clean(p_name);
   v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_avatar text;
 begin
   if auth.uid() is null then raise exception 'Sign in first'; end if;
   select * into g from public.groups where code = upper(btrim(p_code));
@@ -214,9 +217,18 @@ begin
   if v_name is null then raise exception 'Pick a name'; end if;
   if char_length(v_name) > 20 then raise exception 'Names are 20 characters or fewer'; end if;
 
+  -- Serialise avatar assignment so two people cannot receive the same one.
+  perform 1 from public.groups where id = g.id for update;
+  select choice into v_avatar
+  from unnest(array['cow','koala','ram','flamingo','panda','llama','elephant','crocodile','gorilla','moose','chameleon','bear','giraffe','tiger','zebra','lion']::text[]) with ordinality as choices(choice, position)
+  where not exists (select 1 from public.memberships where group_id = g.id and avatar = choice)
+  order by position
+  limit 1;
+  if v_avatar is null then raise exception 'This race has no profile pictures left'; end if;
+
   begin
-    insert into public.memberships (group_id, user_id, display_name, colour)
-    values (g.id, auth.uid(), v_name, p_colour);
+    insert into public.memberships (group_id, user_id, display_name, colour, avatar)
+    values (g.id, auth.uid(), v_name, p_colour, v_avatar);
   exception when unique_violation then
     raise exception 'That name is taken in this race';
   end;
@@ -257,6 +269,10 @@ begin
   if char_length(v_name) > 20 then raise exception 'Names are 20 characters or fewer'; end if;
   if coalesce(p_colour, '') !~ '^#[0-9a-fA-F]{6}$' then raise exception 'Pick a profile colour'; end if;
   if coalesce(p_avatar, '') not in ('cow','koala','ram','flamingo','panda','llama','elephant','crocodile','gorilla','moose','chameleon','bear','giraffe','tiger','zebra','lion') then raise exception 'Pick a profile picture'; end if;
+  perform 1 from public.groups where id = p_group for update;
+  if exists (select 1 from public.memberships where group_id = p_group and avatar = p_avatar and user_id <> auth.uid()) then
+    raise exception 'That profile picture is already taken in this race';
+  end if;
   begin
     update public.memberships set display_name = v_name, colour = p_colour, avatar = p_avatar
      where group_id = p_group and user_id = auth.uid();
@@ -617,11 +633,11 @@ begin
 end $$;
 
 -- ---------- the race ----------------------------------------------------
--- Starts Sat 24 Oct 2026, 12:00am Sydney time (UTC+11) = 23 Oct 13:00 UTC.
+-- Starts Sun 25 Oct 2026, 5:00pm Sydney time (UTC+11) = 25 Oct 06:00 UTC.
 -- CHANGE THE EMAIL to the Google account you will sign in with. Whoever
 -- joins with that email becomes the host (lock joining, close the race,
 -- revert a hire).
 
 insert into public.groups (code, name, start_at, owner_email)
-values ('SUEDE26', 'Breads Up!', '2026-10-23 13:00:00+00', 'YOUR_EMAIL@gmail.com')
+values ('SUEDE26', 'Breads Up!', '2026-10-25 06:00:00+00', 'YOUR_EMAIL@gmail.com')
 on conflict (code) do nothing;

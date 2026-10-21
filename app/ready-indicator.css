@@ -1,0 +1,10 @@
+.ready-dot {
+  bottom: auto;
+  top: -4px;
+}
+
+.countdown-lobby .ready-button {
+  background: var(--race-violet);
+  box-shadow: 0 4px 0 var(--race-deep);
+  font-size: 22px;
+}

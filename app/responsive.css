@@ -1,0 +1,174 @@
+/* Mobile-first sizing with room for the dashboard and lobby on larger screens. */
+html {
+  min-width: 320px;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+.landingcopy,
+.join .card {
+  width: min(calc(100vw - 32px), 430px);
+}
+
+.sheet {
+  max-width: 640px;
+}
+
+@media (max-width: 359px) {
+  main {
+    padding-inline: 12px;
+  }
+
+  .landingcopy {
+    padding-inline: 20px;
+  }
+
+  .countdown-hero {
+    padding-inline: 12px;
+  }
+
+  .countdown-lobby .countdown {
+    gap: 6px;
+  }
+
+  .countdown-lobby .countdown strong {
+    font-size: 34px;
+  }
+
+  .countdown-lobby .countdown small {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+
+  .racer-slots {
+    gap: 4px;
+  }
+
+  .countdown-lobby .codebox {
+    gap: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (min-width: 700px) {
+  html,
+  body {
+    background: #f3f0fe;
+  }
+
+  main:not(.landing):not(.countdown-lobby) {
+    max-width: 960px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  header {
+    padding-inline: max(28px, calc((100vw - 896px) / 2));
+  }
+
+  .content {
+    max-width: 896px;
+  }
+
+  nav {
+    max-width: 960px;
+  }
+
+  .hero {
+    padding-top: 34px;
+  }
+
+  .hero h1 {
+    font-size: 42px;
+  }
+
+  .mystats {
+    max-width: 620px;
+  }
+
+  .logcard,
+  .eventbuttons,
+  .accept {
+    max-width: 620px;
+  }
+
+  .countdown-lobby {
+    border-radius: 24px;
+    box-shadow: 0 0 0 1px #ffffff70, 0 24px 80px #28164e2b;
+    margin: 32px auto;
+    max-width: 760px;
+    min-height: calc(100dvh - 64px);
+    width: 100%;
+  }
+
+  .countdown-hero {
+    padding: 40px 56px 82px;
+  }
+
+  .countdown-lobby .countdown {
+    gap: 18px;
+  }
+
+  .countdown-lobby .countdown strong {
+    font-size: 62px;
+  }
+
+  .lobby-sheet {
+    padding: 32px 56px calc(34px + env(safe-area-inset-bottom));
+  }
+
+  .racer-slots {
+    gap: 22px;
+  }
+
+  .countdown-lobby .avatar.lg {
+    height: 68px !important;
+    width: 68px !important;
+  }
+
+  .racer-slot strong {
+    font-size: 14px;
+  }
+
+  .scrim {
+    align-items: center;
+    padding: 56px 32px;
+  }
+
+  .sheet {
+    border-radius: 22px;
+    margin: 0;
+    max-height: min(680px, calc(100dvh - 112px));
+    width: min(640px, 100%);
+  }
+}
+
+@media (min-width: 1100px) {
+  main:not(.landing):not(.countdown-lobby) {
+    max-width: 1100px;
+  }
+
+  header {
+    padding-inline: max(32px, calc((100vw - 1036px) / 2));
+  }
+
+  .content {
+    max-width: 1036px;
+  }
+
+  nav {
+    max-width: 1100px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
