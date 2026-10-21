@@ -4,6 +4,8 @@ import {supabase,raceCode,colours,Player,Application,FeedItem,message} from '@/l
 import {animalAvatars,Avatar} from '@/components/Avatar';
 import {celebrate} from "@/components/Confetti";
 import {Logo} from "@/components/Logo";
+import {withLoadTimeout} from '@/lib/load-timeout';
+import {normaliseRaceCode} from '@/lib/race-link';
 type Group={id:string;code:string;name:string;start_at:string;closed:boolean;locked:boolean;owner_id:string|null};
 type Tab='race'|'log'|'feed'|'me';
 const fmt=(date:string)=>new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}).format(new Date(date));
@@ -12,25 +14,102 @@ function Button({children,className='',...props}:React.ButtonHTMLAttributes<HTML
 function Sheet({title,children,onClose}:{title:string;children:React.ReactNode;onClose:()=>void}){return <div className="scrim" role="presentation" onMouseDown={onClose}><section className="sheet" role="dialog" aria-modal="true" aria-label={title} onMouseDown={e=>e.stopPropagation()}><div className="grab"/><div className="sheethead"><h2>{title}</h2><button onClick={onClose} aria-label="Close">×</button></div>{children}</section></div>}
 export default function Home(){
  const [session,setSession]=useState<{user:{id:string}}|null>(null),[group,setGroup]=useState<Group|null>(null),[players,setPlayers]=useState<Player[]>([]),[apps,setApps]=useState<Application[]>([]),[feed,setFeed]=useState<FeedItem[]>([]),[serverOffset,setServerOffset]=useState(0),[tab,setTab]=useState<Tab>('race'),[loading,setLoading]=useState(true),[raceLoading,setRaceLoading]=useState(false),[notice,setNotice]=useState(''),[sound,setSound]=useState(false),[offline,setOffline]=useState(false); const client=supabase;
- const authLoadVersion=useRef(0);
+ const initialSession=useRef<Promise<{user:{id:string}}|null>|null>(null);
+ const [loadError,setLoadError]=useState('');
+ const [activeRaceCode,setActiveRaceCode]=useState<string|null>(null);
  const say=(text:string)=>{setNotice(text);window.setTimeout(()=>setNotice(''),5000)};
  const refresh=useCallback(async(gid:string,userId:string)=>{if(!client)return;const [s,a]=await Promise.all([client.rpc('race_standings',{p_group:gid}),client.from('applications').select('*').eq('group_id',gid).eq('user_id',userId).order('created_at',{ascending:false})]);if(s.error)say(message(s.error));else setPlayers((s.data||[]) as Player[]);if(!a.error)setApps((a.data||[]) as Application[])},[client]);
  const refreshFeed=useCallback(async(gid:string)=>{if(!client)return;const {data,error}=await client.rpc('race_feed',{p_group:gid,p_limit:80});if(error)say(message(error));else setFeed((data||[]) as FeedItem[])},[client]);
- useEffect(()=>{if(!client){setLoading(false);return}let active=true;const loadRace=async(nextSession:typeof session)=>{const loadVersion=++authLoadVersion.current;if(!active)return;setLoading(true);setSession(nextSession);if(!nextSession){setGroup(null);setPlayers([]);setRaceLoading(false);setLoading(false);return}try{const [groupResult,timeResult]=await Promise.all([client.from('groups').select('*').eq('code',raceCode).maybeSingle(),client.rpc('get_server_time')]);if(!active||loadVersion!==authLoadVersion.current)return;if(groupResult.error){say(message(groupResult.error));setGroup(null);setLoading(false);return}if(timeResult.data)setServerOffset(new Date(timeResult.data as string).getTime()-Date.now());const g=groupResult.data;if(!g){setGroup(null);setLoading(false);return}setGroup(g as Group);setRaceLoading(true);setLoading(false);await refresh(g.id,nextSession.user.id);if(active&&loadVersion===authLoadVersion.current)setRaceLoading(false)}catch{if(active&&loadVersion===authLoadVersion.current){say('Could not load your race. Please refresh and try again.');setLoading(false);setRaceLoading(false)}}};const completeSignIn=async()=>{const code=new URLSearchParams(window.location.search).get('code');if(code){const {error}=await client.auth.exchangeCodeForSession(code);if(error){say(message(error));setLoading(false);return}window.history.replaceState({},document.title,window.location.pathname)}const {data}=await client.auth.getSession();await loadRace(data.session as typeof session)};void completeSignIn();const {data:{subscription}}=client.auth.onAuthStateChange((_e,s)=>{void loadRace(s as typeof session)});return()=>{active=false;subscription.unsubscribe()}},[refresh,client]);
+ useEffect(()=>{setActiveRaceCode(normaliseRaceCode(new URLSearchParams(window.location.search).get('race'))||raceCode)},[]);
+ useEffect(()=>{
+  if(!client){setLoading(false);return}
+  if(!activeRaceCode)return;
+  let active=true,version=0,currentUser:string|null=null;
+  let authTimer:ReturnType<typeof setTimeout>|undefined;
+  const isCurrent=(request:number)=>active&&request===version;
+  const loadRace=async(nextSession:typeof session)=>{
+   if(!active)return;
+   const request=++version;
+   currentUser=nextSession?.user.id??null;
+   setSession(nextSession);setLoadError('');setLoading(true);
+   try{
+    if(!nextSession){setGroup(null);setPlayers([]);setApps([]);return}
+    const result=await withLoadTimeout(
+     client.from('groups').select('*').eq('code',activeRaceCode).maybeSingle(),
+     'We couldn’t load your race. Check your connection and try again.'
+    );
+    if(!isCurrent(request))return;
+    if(result.error)throw result.error;
+    if(!result.data){setGroup(null);setPlayers([]);return}
+    const g=result.data as Group;
+    // The clock and application history must not block entry into the lobby.
+    const standings=await withLoadTimeout(
+     client.rpc('race_standings',{p_group:g.id}),
+     'We couldn’t load the racers. Please try again.'
+    );
+    if(!isCurrent(request))return;
+    if(standings.error)throw standings.error;
+    setGroup(g);setPlayers((standings.data||[]) as Player[]);setRaceLoading(false);
+    void withLoadTimeout(client.rpc('get_server_time'),'Clock unavailable',5000).then(({data})=>{
+     if(isCurrent(request)&&data)setServerOffset(new Date(data as string).getTime()-Date.now());
+    }).catch(()=>{});
+    void withLoadTimeout(client.from('applications').select('*').eq('group_id',g.id).eq('user_id',nextSession.user.id).order('created_at',{ascending:false}),'History unavailable').then(({data,error})=>{
+     if(isCurrent(request)&&!error)setApps((data||[]) as Application[]);
+    }).catch(()=>{});
+   }catch(error){
+    if(isCurrent(request))setLoadError(message(error));
+   }finally{
+    if(isCurrent(request)){setLoading(false);setRaceLoading(false)}
+   }
+  };
+  // Reuse this promise during React's development effect replay: OAuth codes
+  // can only be exchanged once.
+  if(!initialSession.current){
+   initialSession.current=(async()=>{
+    const code=new URLSearchParams(window.location.search).get('code');
+    if(code){
+     const {data,error}=await withLoadTimeout(client.auth.exchangeCodeForSession(code),'Sign-in is taking too long. Please try again.');
+     if(error)throw error;
+     const url=new URL(window.location.href);url.searchParams.delete('code');
+     window.history.replaceState({},document.title,url.pathname+url.search+url.hash);
+     return data.session;
+    }
+    const {data,error}=await withLoadTimeout(client.auth.getSession(),'We couldn’t restore your sign-in. Check your connection and try again.');
+    if(error)throw error;
+    return data.session;
+   })();
+  }
+  let bootstrapped=false;
+  const {data:{subscription}}=client.auth.onAuthStateChange((event,s)=>{
+   // Startup owns INITIAL_SESSION. Refresh events do not require a new lobby.
+   if(!bootstrapped||event==='INITIAL_SESSION'||(s?.user.id??null)===currentUser)return;
+   clearTimeout(authTimer);
+   authTimer=setTimeout(()=>{void loadRace(s)},0);
+  });
+  void initialSession.current.then(async restored=>{
+   if(!active)return;
+   bootstrapped=true;
+   await loadRace(restored);
+  }).catch(error=>{
+   if(active){setLoadError(message(error));setLoading(false)}
+  });
+  return()=>{active=false;version++;clearTimeout(authTimer);subscription.unsubscribe()};
+ },[client,activeRaceCode]);
  useEffect(()=>{if(!client||!group||!session)return;let timer:number|undefined;const fetch=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>{void refresh(group.id,session.user.id);if(tab==='feed')void refreshFeed(group.id)},300)};const ch=client.channel(`race-${group.id}`).on('postgres_changes',{event:'*',schema:'public',table:'applications',filter:`group_id=eq.${group.id}`},fetch).on('postgres_changes',{event:'*',schema:'public',table:'events',filter:`group_id=eq.${group.id}`},fetch).on('postgres_changes',{event:'*',schema:'public',table:'memberships',filter:`group_id=eq.${group.id}`},fetch).subscribe(status=>setOffline(status!=='SUBSCRIBED'));const focus=()=>{void refresh(group.id,session.user.id);if(tab==='feed')void refreshFeed(group.id)};window.addEventListener('focus',focus);return()=>{window.clearTimeout(timer);window.removeEventListener('focus',focus);client.removeChannel(ch)}},[group,session,tab,refresh,refreshFeed,client]);
  useEffect(()=>{if(client&&group&&tab==='feed')void refreshFeed(group.id)},[client,group,tab,refreshFeed]);
- if(loading)return <main className="center"><div className="spinner"/><p>Setting the starting line…</p></main>;
+ if(loadError)return <main className="center"><h1>Couldn’t load your race</h1><p role="alert">{loadError}</p><Button onClick={()=>window.location.reload()}>Try again</Button></main>;
+ if(!activeRaceCode||loading)return <main className="center" aria-busy="true"><div className="spinner"/><p>Setting the starting line…</p></main>;
  if(!client)return <main className="center"><Logo tone="onViolet" size={44}/> <p>Missing Supabase configuration.</p><code>Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.</code></main>;
- if(!session)return <Landing onLogin={async()=>{const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});if(error)say(message(error))}} notice={notice}/>;
- if(!group)return <Join onDone={async(code)=>{const {data:g,error}=await client.from('groups').select('*').eq('code',code).maybeSingle();if(error||!g)return say('No race with that code.');setGroup(g as Group);setRaceLoading(true);void refresh(g.id,session.user.id).finally(()=>setRaceLoading(false))}} say={say}/>;
+ if(!session)return <Landing raceCode={activeRaceCode} onLogin={async()=>{const redirectUrl=new URL('/',window.location.origin);redirectUrl.searchParams.set('race',activeRaceCode);const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:redirectUrl.toString()}});if(error)say(message(error))}} notice={notice}/>;
+ if(!group)return <Join raceCode={activeRaceCode} onDone={async(code)=>{const {data:g,error}=await client.from('groups').select('*').eq('code',code).maybeSingle();if(error||!g)return say('No race with that code.');setGroup(g as Group);setRaceLoading(true);void refresh(g.id,session.user.id).finally(()=>setRaceLoading(false))}} say={say}/>;
  if(raceLoading)return <LobbyLoading group={group} now={Date.now()+serverOffset}/>;
  const me=players.find(p=>p.user_id===session.user.id), now=Date.now()+serverOffset, live=now>=new Date(group.start_at).getTime();
  if(!me)return <Join group={group} onDone={async()=>{await refresh(group.id,session.user.id)}} say={say}/>;
  if(!live)return <Lobby group={group} players={players} me={me} now={now} onReady={async ready=>{const {error}=await client.rpc('set_ready',{p_group:group.id,p_ready:ready});if(error)say(message(error));else await refresh(group.id,session.user.id)}} onProfile={async(name,colour,avatar)=>{const {error}=await client.rpc('update_profile',{p_group:group.id,p_name:name,p_colour:colour,p_avatar:avatar});if(error){say(message(error));return false}await refresh(group.id,session.user.id);return true}} onLeave={async()=>{const {error}=await client.rpc('leave_group',{p_group:group.id});if(error){say(message(error));return false}const {error:signOutError}=await client.auth.signOut();if(signOutError){say(message(signOutError));return false}setPlayers([]);setGroup(null);setSession(null);return true}} onRejoin={async()=>false}/>;
  return <main><header><button className="logo" onClick={()=>setTab("race")}><Logo tone="onLight" size={36}/></button><button className="sound" onClick={()=>setSound(!sound)} aria-label="Toggle sound">{sound?'♪':'♩̸'}</button></header>{offline&&<div className="reconnect">Reconnecting…</div>}{notice&&<div className="toast" role="status">{notice}</div>}<section className="content">{group.closed&&<div className="closed">This race is closed</div>}{tab==='race'&&<Race players={players} mine={session.user.id}/>} {tab==='log'&&<Log group={group} me={me} apps={apps} refresh={()=>refresh(group.id,session.user.id)} say={say}/>} {tab==='feed'&&<Feed feed={feed}/>} {tab==='me'&&<Me group={group} me={me} apps={apps} onRefresh={()=>refresh(group.id,session.user.id)} say={say} signout={()=>client.auth.signOut()}/>}</section><nav>{(['race','log','feed','me'] as Tab[]).map(x=><button key={x} className={tab===x?'active':''} onClick={()=>setTab(x)}><span>{x==='race'?'🏁':x==='log'?'＋':x==='feed'?'⚡':'●'}</span>{x}</button>)}</nav></main>
 }
-function Landing({onLogin,notice}:{onLogin:()=>Promise<void>;notice:string}){const [signingIn,setSigningIn]=useState(false);const login=async()=>{setSigningIn(true);await onLogin();setSigningIn(false)};return <main className="landing"><div className="checker"/><div className="landingcopy"><p className="sticker">Let’s all find a job</p><Logo className="landing-logo" variant="stacked" tone="onLight" size={52}/><p className="landing-caption">Race your friends to employment.</p><Button disabled={signingIn} aria-busy={signingIn} onClick={login}>{signingIn?'Signing in…':<>Sign in with Google <b>→</b></>}</Button>{signingIn&&<p className="signin-status" role="status">Opening Google sign-in…</p>}{notice&&<p className="error">{notice}</p>}</div></main>}
-function Join({group,onDone,say}:{group?:Group;onDone:(code:string)=>Promise<void>;say:(s:string)=>void}){const [name,setName]=useState(''),[code,setCode]=useState(group?.code||raceCode),[colour,setColour]=useState(colours[0]),[busy,setBusy]=useState(false),[errorText,setErrorText]=useState('');const submit=async(e:FormEvent)=>{e.preventDefault();if(!supabase)return;setBusy(true);setErrorText('');const {error}=await supabase.rpc('join_group',{p_code:code,p_name:name,p_colour:colour});setBusy(false);if(error){const text=message(error);setErrorText(text);say(text);return}try{await onDone(code.toUpperCase())}catch{setErrorText('Joined, but could not load the race. Refresh this page.')}};return <main className="join"><Logo className="join-logo" tone="onLight" size={48}/><section className="card"><p className="eyebrow">You’re in. Pick your racer.</p><form onSubmit={submit}><label>Display name<input required maxLength={20} value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Race code<input value={code} maxLength={12} onChange={e=>setCode(e.target.value.toUpperCase())}/></label><span className="label">Your colour</span><div className="colours">{colours.map(c=><button type="button" key={c} onClick={()=>setColour(c)} style={{background:c}} className={colour===c?'selected':''} aria-label={`Choose ${c}`}/>)}</div><Button disabled={busy}>{busy?'Joining…':'Join the race'}</Button>{errorText&&<p className="error" role="alert">{errorText}</p>}</form></section></main>}
+function Landing({raceCode,onLogin,notice}:{raceCode:string;onLogin:()=>Promise<void>;notice:string}){const [signingIn,setSigningIn]=useState(false);const login=async()=>{setSigningIn(true);await onLogin();setSigningIn(false)};return <main className="landing"><div className="checker"/><div className="landingcopy"><p className="sticker">Let’s all find a job</p><Logo className="landing-logo" variant="stacked" tone="onLight" size={52}/><p className="landing-caption">Sign in to join race {raceCode}.</p><Button disabled={signingIn} aria-busy={signingIn} onClick={login}>{signingIn?'Signing in…':<>Sign in with Google <b>→</b></>}</Button>{signingIn&&<p className="signin-status" role="status">Opening Google sign-in…</p>}{notice&&<p className="error">{notice}</p>}</div></main>}
+function Join({group,raceCode:defaultRaceCode,onDone,say}:{group?:Group;raceCode?:string;onDone:(code:string)=>Promise<void>;say:(s:string)=>void}){const [name,setName]=useState(''),[code,setCode]=useState(group?.code||defaultRaceCode||raceCode),[colour,setColour]=useState(colours[0]),[busy,setBusy]=useState(false),[errorText,setErrorText]=useState('');const submit=async(e:FormEvent)=>{e.preventDefault();if(!supabase)return;setBusy(true);setErrorText('');const {error}=await supabase.rpc('join_group',{p_code:code,p_name:name,p_colour:colour});setBusy(false);if(error){const text=message(error);setErrorText(text);say(text);return}try{await onDone(code.toUpperCase())}catch{setErrorText('Joined, but could not load the race. Refresh this page.')}};return <main className="join"><Logo className="join-logo" tone="onLight" size={48}/><section className="card"><p className="eyebrow">You’re in. Pick your racer.</p><form onSubmit={submit}><label>Display name<input required maxLength={20} value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Race code<input value={code} maxLength={12} onChange={e=>setCode(e.target.value.toUpperCase())}/></label><span className="label">Your colour</span><div className="colours">{colours.map(c=><button type="button" key={c} onClick={()=>setColour(c)} style={{background:c}} className={colour===c?'selected':''} aria-label={`Choose ${c}`}/>)}</div><Button disabled={busy}>{busy?'Joining…':'Join the race'}</Button>{errorText&&<p className="error" role="alert">{errorText}</p>}</form></section></main>}
 function LobbyLoading({group,now}:{group:Group;now:number}){
  const remaining=Math.max(0,new Date(group.start_at).getTime()-now),d=Math.floor(remaining/864e5),h=Math.floor(remaining/36e5)%24,m=Math.floor(remaining/6e4)%60,s=Math.floor(remaining/1e3)%60;
  return <main className="lobby countdown-lobby" aria-busy="true"><section className="countdown-hero"><i className="hero-orb orb-one" aria-hidden="true"/><i className="hero-orb orb-two" aria-hidden="true"/><Logo className="lobby-brand" tone="onViolet" size={44}/><p className="countdown-label">RACE STARTS IN</p><div className="countdown" aria-label="Time until the race starts">{[[d,'DAYS'],[h,'HOURS'],[m,'MINS'],[s,'SECS']].map(([n,l])=><div key={String(l)}><strong>{String(n).padStart(2,'0')}</strong><small>{l}</small></div>)}</div></section><section className="lobby-sheet lobby-loading"><div className="spinner"/><p>Finding your place at the line…</p></section></main>
@@ -41,7 +120,7 @@ function Lobby({group,players,me,now,onReady,onProfile,onLeave,onRejoin}:{group:
  const remaining=Math.max(0,new Date(group.start_at).getTime()-tick),d=Math.floor(remaining/864e5),h=Math.floor(remaining/36e5)%24,m=Math.floor(remaining/6e4)%60,s=Math.floor(remaining/1e3)%60,ready=players.filter(p=>p.ready).length;
  const startDate=new Date(group.start_at), datePart=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',weekday:'short',day:'numeric',month:'short'}).format(startDate).replace(',',''), timePart=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',hour:'numeric',minute:'2-digit',hour12:true}).format(startDate).toUpperCase(), startLabel=`${datePart} · ${timePart}`;
  const copy=async()=>{try{await navigator.clipboard.writeText(group.code);setCopied(true);window.setTimeout(()=>setCopied(false),1800)}catch{}};
- const share=async()=>{const text=`Join Breads Up! Code: ${group.code}`;try{if(navigator.share)await navigator.share({title:"Breads Up!",text,url:location.href});else await copy()}catch{}};
+ const share=async()=>{const url=new URL(`/r/${encodeURIComponent(group.code)}`,window.location.origin).toString(),text='Join my Breads Up! job-hunt race.';try{if(navigator.share)await navigator.share({title:`Join ${group.code} on Breads Up!`,text,url});else{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),1800)}}catch{}};
  const save=async()=>{setSaving(true);const ok=await onProfile(name,colour,avatar);setSaving(false);if(ok)setEditing(false)};
  const leave=async()=>{setBusy(true);const ok=await onLeave();setBusy(false);if(ok){setLeftRace(true);setConfirmLeave(false)}};
  const rejoin=async()=>{setBusy(true);const ok=await onRejoin();setBusy(false);if(ok)setLeftRace(false)};

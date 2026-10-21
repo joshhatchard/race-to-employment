@@ -1,2 +1,35 @@
-.animal-avatar{background-color:#fff;background-repeat:no-repeat;background-size:auto 200%;border-radius:50%;display:block;flex:none;overflow:hidden}
-.animal-picker{display:grid;gap:8px;grid-template-columns:repeat(4,1fr);margin:8px 0 18px}.animal-picker button{background:#fff;border:2px solid var(--race-border);border-radius:12px;display:grid;min-height:54px;overflow:hidden;place-items:center;padding:3px}.animal-picker button.selected{border-color:var(--race-violet);box-shadow:0 0 0 2px var(--race-violet)}.animal-picker .avatar{border:0;box-shadow:none!important;height:42px!important;width:42px!important}
+.animal-avatar {
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-size: 800% 200%;
+  border-radius: 50%;
+  display: block;
+  flex: none;
+  overflow: hidden;
+}
+.animal-picker {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 8px 0 18px;
+}
+.animal-picker button {
+  background: #fff;
+  border: 2px solid var(--race-border);
+  border-radius: 12px;
+  display: grid;
+  min-height: 54px;
+  overflow: hidden;
+  place-items: center;
+  padding: 3px;
+}
+.animal-picker button.selected {
+  border-color: var(--race-violet);
+  box-shadow: 0 0 0 2px var(--race-violet);
+}
+.animal-picker .avatar {
+  border: 0;
+  box-shadow: none !important;
+  height: 42px !important;
+  width: 42px !important;
+}

@@ -1,0 +1,7 @@
+.countdown-lobby .codebox button:last-child {
+  aspect-ratio: 1;
+  box-shadow: none;
+  height: 44px;
+  min-height: 44px;
+  width: 44px;
+}
