@@ -1,0 +1,2 @@
+import type { MetadataRoute } from 'next';
+export default function manifest(): MetadataRoute.Manifest { return {name:'Breads Up!',short_name:'Breads Up!',description:'Race your friends to your next job.',start_url:'/',display:'standalone',background_color:'#5B3CDD',theme_color:'#5B3CDD',icons:[{src:'/favicon.svg',sizes:'any',type:'image/svg+xml'},{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}]}; }
