@@ -5,7 +5,7 @@ import {animalAvatars,Avatar} from '@/components/Avatar';
 import {celebrate} from "@/components/Confetti";
 import {Logo} from "@/components/Logo";
 import {withLoadTimeout} from '@/lib/load-timeout';
-import {normaliseRaceCode} from '@/lib/race-link';
+import {normaliseRaceCode,raceInviteUrl} from '@/lib/race-link';
 type Group={id:string;code:string;name:string;start_at:string;closed:boolean;locked:boolean;owner_id:string|null};
 type Tab='race'|'log'|'feed'|'me';
 const fmt=(date:string)=>new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}).format(new Date(date));
@@ -120,7 +120,7 @@ function Lobby({group,players,me,now,onReady,onProfile,onLeave,onRejoin}:{group:
  const remaining=Math.max(0,new Date(group.start_at).getTime()-tick),d=Math.floor(remaining/864e5),h=Math.floor(remaining/36e5)%24,m=Math.floor(remaining/6e4)%60,s=Math.floor(remaining/1e3)%60,ready=players.filter(p=>p.ready).length;
  const startDate=new Date(group.start_at), datePart=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',weekday:'short',day:'numeric',month:'short'}).format(startDate).replace(',',''), timePart=new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',hour:'numeric',minute:'2-digit',hour12:true}).format(startDate).toUpperCase(), startLabel=`${datePart} · ${timePart}`;
  const copy=async()=>{try{await navigator.clipboard.writeText(group.code);setCopied(true);window.setTimeout(()=>setCopied(false),1800)}catch{}};
- const share=async()=>{const url=new URL(`/r/${encodeURIComponent(group.code)}`,window.location.origin).toString(),text='Join my Breads Up! job-hunt race.';try{if(navigator.share)await navigator.share({title:`Join ${group.code} on Breads Up!`,text,url});else{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),1800)}}catch{}};
+ const share=async()=>{const url=raceInviteUrl(group.code),text='Join my Breads Up! job-hunt race.';try{if(navigator.share)await navigator.share({title:`Join ${group.code} on Breads Up!`,text,url});else{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),1800)}}catch{}};
  const save=async()=>{setSaving(true);const ok=await onProfile(name,colour,avatar);setSaving(false);if(ok)setEditing(false)};
  const leave=async()=>{setBusy(true);const ok=await onLeave();setBusy(false);if(ok){setLeftRace(true);setConfirmLeave(false)}};
  const rejoin=async()=>{setBusy(true);const ok=await onRejoin();setBusy(false);if(ok)setLeftRace(false)};
