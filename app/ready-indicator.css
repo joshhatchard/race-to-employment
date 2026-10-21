@@ -4,7 +4,12 @@
 }
 
 .countdown-lobby .ready-button {
-  background: var(--race-violet);
-  box-shadow: 0 4px 0 var(--race-deep);
+  background: var(--race-success);
+  box-shadow: 0 4px 0 #0f5c38;
   font-size: 22px;
+}
+
+.countdown-lobby .lobby-sheet > div[aria-live] .btn {
+  background: var(--race-success);
+  box-shadow: 0 4px 0 #0f5c38;
 }
