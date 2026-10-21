@@ -623,5 +623,5 @@ end $$;
 -- revert a hire).
 
 insert into public.groups (code, name, start_at, owner_email)
-values ('RACE24', 'Breads Up!', '2026-10-23 13:00:00+00', 'YOUR_EMAIL@gmail.com')
+values ('SUEDE26', 'Breads Up!', '2026-10-23 13:00:00+00', 'YOUR_EMAIL@gmail.com')
 on conflict (code) do nothing;
