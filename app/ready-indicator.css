@@ -10,6 +10,12 @@
 }
 
 .countdown-lobby .lobby-sheet > div[aria-live] .btn {
+  background: var(--race-violet);
+  box-shadow: 0 4px 0 var(--race-deep);
+}
+
+/* Confirmed state wins over the purple default call to action above. */
+.countdown-lobby .lobby-sheet > div[aria-live] .btn.ready-button {
   background: var(--race-success);
   box-shadow: 0 4px 0 #0f5c38;
 }

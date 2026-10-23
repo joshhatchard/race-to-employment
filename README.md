@@ -22,7 +22,8 @@ A mobile-first, Google-authenticated job-search race for a group of friends. It 
    ```sql
    update public.groups set start_at = '2026-10-25 06:00:00+00' where code = 'SUEDE26';
    ```
-6. Troubleshooting:
+6. To enable the active-race dashboard (independent interviews, reactions, Hall of Fame and trusted activity feed), paste and run [`supabase/migrations/20261022_main_app.sql`](supabase/migrations/20261022_main_app.sql) in the Supabase SQL Editor after the base schema.
+7. Troubleshooting:
    - `redirect_uri_mismatch`: copy the exact callback URI Supabase shows into Google Cloud.
    - `access blocked: app not verified`: add users to the OAuth consent-screen test users, or publish the consent screen.
    - Project paused: open the Supabase dashboard and restore the free project, then sign in again.

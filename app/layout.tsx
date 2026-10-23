@@ -8,6 +8,7 @@ import './share-button.css';
 import './ready-indicator.css';
 import './brand.css';
 import './responsive.css';
+import './race-dashboard.css';
 import {publicSiteUrl} from '@/lib/race-link';
 const poppins=Poppins({subsets:['latin'],weight:['500','600','700','800'],variable:'--font-poppins',display:'swap'});
 export const metadata: Metadata = {metadataBase:new URL(publicSiteUrl),title:'Breads Up!',description:'Race your friends to your next job.',manifest:'/manifest.webmanifest',icons:{icon:[{url:'/favicon.svg',type:'image/svg+xml'},{url:'/icon-32.png',sizes:'32x32',type:'image/png'}],apple:'/apple-touch-icon.png'},appleWebApp:{capable:true,statusBarStyle:'black-translucent',title:'Breads Up!'}};
